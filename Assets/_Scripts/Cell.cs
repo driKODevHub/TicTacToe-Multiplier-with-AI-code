@@ -2,10 +2,10 @@ using UnityEngine;
 
 public class Cell : MonoBehaviour
 {
-    [Tooltip("Індекс цієї клітинки (від 0 до 8)")]
+    [Tooltip("The index of this cell (0 to 8)")]
     public int cellIndex;
 
-    // OnMouseDown() та Start() більше не потрібні.
-    // GameManager тепер сам знаходить клітинки за допомогою Raycast.
+    // OnMouseDown() and Start() are no longer needed.
+    // The GameManager now finds cells using Raycast.
 }
 
