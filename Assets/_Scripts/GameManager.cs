@@ -1,240 +1,288 @@
-using UnityEngine;
+using System;
 using System.Collections.Generic;
-using UnityEngine.InputSystem;
+using Unity.Netcode;
+using UnityEngine;
 
-public class GameManager : MonoBehaviour
-{
-    // --- Публічні змінні для налаштування в Unity Editor ---
-
-    [Header("Ігрові об'єкти")]
-    [Tooltip("Префаб для фігури 'X'")]
-    public GameObject xPrefab;
-    [Tooltip("Префаб для фігури 'O'")]
-    public GameObject oPrefab;
-    [Tooltip("Масив трансформів для 9 клітинок на полі")]
-    public Transform[] cellPositions;
-
-    [Header("Налаштування ШІ")]
-    [Tooltip("Шанс, з яким ШІ зробить випадковий, а не найкращий хід (від 0 до 100)")]
-    [Range(0, 100)]
-    public float aiErrorPercentage = 10f;
-
-    [Header("UI Елементи (Опціонально)")]
-    [Tooltip("Текстове поле для відображення статусу гри")]
-    public UnityEngine.UI.Text statusText;
+public class GameManager : NetworkBehaviour {
 
 
-    // --- Приватні змінні ---
-
-    private int[,] boardState = new int[3, 3];
-    private bool isPlayerTurn;
-    private bool isGameEnded = false;
-    private int playerMark = 1;
-    private int aiMark = 2;
-    private AIPlayer aiPlayer;
-    private List<GameObject> spawnedMarkers = new List<GameObject>();
-    private bool isRestartRequested = false;
+    public static GameManager Instance { get; private set; }
 
 
-    void Start()
-    {
-        aiPlayer = GetComponent<AIPlayer>();
-        if (aiPlayer == null)
-        {
-            aiPlayer = gameObject.AddComponent<AIPlayer>();
-        }
-        StartNewGame();
+    public event EventHandler<OnClickedOnGridPositionEventArgs> OnClickedOnGridPosition;
+    public class OnClickedOnGridPositionEventArgs : EventArgs {
+        public int x;
+        public int y;
+        public PlayerType playerType;
+    }
+    public event EventHandler OnGameStarted;
+    public event EventHandler<OnGameWinEventArgs> OnGameWin;
+    public class OnGameWinEventArgs : EventArgs {
+        public Line line;
+        public PlayerType winPlayerType;
+    }
+    public event EventHandler OnCurrentPlayablePlayerTypeChanged;
+    public event EventHandler OnRematch;
+    public event EventHandler OnGameTied;
+    public event EventHandler OnScoreChanged;
+    public event EventHandler OnPlacedObject;
+
+
+    public enum PlayerType {
+        None,
+        Cross,
+        Circle,
     }
 
-    public void StartNewGame()
-    {
-        // Скасовуємо будь-які заплановані виклики, щоб уникнути багів при швидкому рестарті
-        CancelInvoke();
-        isGameEnded = false;
-        isRestartRequested = false;
-        ClearBoard();
+    public enum Orientation {
+        Horizontal,
+        Vertical,
+        DiagonalA,
+        DiagonalB,
+    }
 
-        boardState = new int[3, 3];
-        for (int i = 0; i < 3; i++)
-        {
-            for (int j = 0; j < 3; j++)
-            {
-                boardState[i, j] = 0;
-            }
+    public struct Line {
+        public List<Vector2Int> gridVector2IntList;
+        public Vector2Int centerGridPosition;
+        public Orientation orientation;
+    }
+
+
+    private PlayerType localPlayerType;
+    private NetworkVariable<PlayerType> currentPlayablePlayerType = new NetworkVariable<PlayerType>();
+    private PlayerType[,] playerTypeArray;
+    private List<Line> lineList;
+    private NetworkVariable<int> playerCrossScore = new NetworkVariable<int>();
+    private NetworkVariable<int> playerCircleScore = new NetworkVariable<int>();
+
+
+    private void Awake() {
+        if (Instance != null) {
+            Debug.LogError("More than one GameManager instance!");
+        }
+        Instance = this;
+
+        playerTypeArray = new PlayerType[3, 3];
+
+        lineList = new List<Line> {
+            // Horizontal
+            new Line {
+                gridVector2IntList = new List<Vector2Int>{ new Vector2Int(0,0), new Vector2Int(1,0), new Vector2Int(2,0), },
+                centerGridPosition = new Vector2Int(1, 0),
+                orientation = Orientation.Horizontal,
+            },
+            new Line {
+                gridVector2IntList = new List<Vector2Int>{ new Vector2Int(0,1), new Vector2Int(1,1), new Vector2Int(2,1), },
+                centerGridPosition = new Vector2Int(1, 1),
+                orientation = Orientation.Horizontal,
+            },
+            new Line {
+                gridVector2IntList = new List<Vector2Int>{ new Vector2Int(0,2), new Vector2Int(1,2), new Vector2Int(2,2), },
+                centerGridPosition = new Vector2Int(1, 2),
+                orientation = Orientation.Horizontal,
+            },
+
+            // Vertical
+            new Line {
+                gridVector2IntList = new List<Vector2Int>{ new Vector2Int(0,0), new Vector2Int(0,1), new Vector2Int(0,2), },
+                centerGridPosition = new Vector2Int(0, 1),
+                orientation = Orientation.Vertical,
+            },
+            new Line {
+                gridVector2IntList = new List<Vector2Int>{ new Vector2Int(1,0), new Vector2Int(1,1), new Vector2Int(1,2), },
+                centerGridPosition = new Vector2Int(1, 1),
+                orientation = Orientation.Vertical,
+            },
+            new Line {
+                gridVector2IntList = new List<Vector2Int>{ new Vector2Int(2,0), new Vector2Int(2,1), new Vector2Int(2,2), },
+                centerGridPosition = new Vector2Int(2, 1),
+                orientation = Orientation.Vertical,
+            },
+
+            // Diagonals
+            new Line {
+                gridVector2IntList = new List<Vector2Int>{ new Vector2Int(0,0), new Vector2Int(1,1), new Vector2Int(2,2), },
+                centerGridPosition = new Vector2Int(1, 1),
+                orientation = Orientation.DiagonalA,
+            },
+            new Line {
+                gridVector2IntList = new List<Vector2Int>{ new Vector2Int(0,2), new Vector2Int(1,1), new Vector2Int(2,0), },
+                centerGridPosition = new Vector2Int(1, 1),
+                orientation = Orientation.DiagonalB,
+            },
+        };
+    }
+
+
+    public override void OnNetworkSpawn() {
+        Debug.Log("OnNetworkSpawn: " + NetworkManager.Singleton.LocalClientId);
+        if (NetworkManager.Singleton.LocalClientId == 0) {
+            localPlayerType = PlayerType.Cross;
+        } else {
+            localPlayerType = PlayerType.Circle;
         }
 
-        if (Random.Range(0, 2) == 0)
-        {
-            playerMark = 1;
-            aiMark = 2;
-            isPlayerTurn = true;
-            UpdateStatus("Ваш хід (X)");
+        if (IsServer) {
+            NetworkManager.Singleton.OnClientConnectedCallback += NetworkManager_OnClientConnectedCallback;
         }
-        else
-        {
-            playerMark = 2;
-            aiMark = 1;
-            isPlayerTurn = false;
-            UpdateStatus("Хід ШІ (X)");
-            Invoke("MakeAIMove", 1f);
+
+        currentPlayablePlayerType.OnValueChanged += (PlayerType oldPlayerType, PlayerType newPlayerType) => {
+            OnCurrentPlayablePlayerTypeChanged?.Invoke(this, EventArgs.Empty);
+        };
+
+        playerCrossScore.OnValueChanged += (int prevScore, int newScore) => {
+            OnScoreChanged?.Invoke(this, EventArgs.Empty);
+        };
+        playerCircleScore.OnValueChanged += (int prevScore, int newScore) => {
+            OnScoreChanged?.Invoke(this, EventArgs.Empty);
+        };
+    }
+
+    private void NetworkManager_OnClientConnectedCallback(ulong obj) {
+        if (NetworkManager.Singleton.ConnectedClientsList.Count == 2) {
+            // Start Game
+            currentPlayablePlayerType.Value = PlayerType.Cross;
+            TriggerOnGameStartedRpc();
         }
     }
 
-    public void PlayerMove(int cellIndex)
-    {
-        if (!isPlayerTurn || isGameEnded || isRestartRequested)
+    [Rpc(SendTo.ClientsAndHost)]
+    private void TriggerOnGameStartedRpc() {
+        OnGameStarted?.Invoke(this, EventArgs.Empty);
+    }
+
+    [Rpc(SendTo.Server)]
+    public void ClickedOnGridPositionRpc(int x, int y, PlayerType playerType) {
+        Debug.Log("ClickedOnGridPosition " + x + ", " + y);
+        if (playerType != currentPlayablePlayerType.Value) {
             return;
-
-        int row = cellIndex / 3;
-        int col = cellIndex % 3;
-
-        if (boardState[row, col] == 0)
-        {
-            PlaceMarker(cellIndex, playerMark);
-            boardState[row, col] = playerMark;
-
-            if (CheckForWinner())
-            {
-                return;
-            }
-
-            isPlayerTurn = false;
-            UpdateStatus("Хід ШІ...");
-            Invoke("MakeAIMove", 0.7f);
-        }
-    }
-
-    private void MakeAIMove()
-    {
-        if (isGameEnded) return;
-
-        int bestMoveIndex = aiPlayer.FindBestMove(boardState, aiMark, playerMark, aiErrorPercentage);
-
-        if (bestMoveIndex != -1)
-        {
-            PlaceMarker(bestMoveIndex, aiMark);
-            int row = bestMoveIndex / 3;
-            int col = bestMoveIndex % 3;
-            boardState[row, col] = aiMark;
         }
 
-        if (CheckForWinner())
-        {
+        if (playerTypeArray[x, y] != PlayerType.None) {
+            // Already occupied
             return;
         }
 
-        isPlayerTurn = true;
-        UpdateStatus("Ваш хід");
+        playerTypeArray[x, y] = playerType;
+        TriggerOnPlacedObjectRpc();
+
+        OnClickedOnGridPosition?.Invoke(this, new OnClickedOnGridPositionEventArgs {
+            x = x,
+            y = y,
+            playerType = playerType,
+        });
+
+        switch (currentPlayablePlayerType.Value) {
+            default:
+            case PlayerType.Cross:
+                currentPlayablePlayerType.Value = PlayerType.Circle;
+                break;
+            case PlayerType.Circle:
+                currentPlayablePlayerType.Value = PlayerType.Cross;
+                break;
+        }
+
+        TestWinner();
     }
 
-    private void PlaceMarker(int cellIndex, int mark)
-    {
-        GameObject prefabToSpawn = (mark == 1) ? xPrefab : oPrefab;
-        if (prefabToSpawn != null && cellPositions[cellIndex] != null)
-        {
-            GameObject newMarker = Instantiate(prefabToSpawn, cellPositions[cellIndex].position, Quaternion.identity);
-            spawnedMarkers.Add(newMarker);
-        }
+    [Rpc(SendTo.ClientsAndHost)]
+    private void TriggerOnPlacedObjectRpc() {
+        OnPlacedObject?.Invoke(this, EventArgs.Empty);
     }
 
-    private bool CheckForWinner()
-    {
-        int winner = AIPlayer.EvaluateBoard(boardState);
+    private bool TestWinnerLine(Line line) {
+        return TestWinnerLine(
+            playerTypeArray[line.gridVector2IntList[0].x, line.gridVector2IntList[0].y],
+            playerTypeArray[line.gridVector2IntList[1].x, line.gridVector2IntList[1].y],
+            playerTypeArray[line.gridVector2IntList[2].x, line.gridVector2IntList[2].y]
+        );
+    }
 
-        if (winner == aiMark)
-        {
-            EndGame("ШІ переміг!");
-            return true;
-        }
-        if (winner == playerMark)
-        {
-            EndGame("Ви перемогли!");
-            return true;
-        }
+    private bool TestWinnerLine(PlayerType aPlayerType, PlayerType bPlayerType, PlayerType cPlayerType) {
+        return
+            aPlayerType != PlayerType.None &&
+            aPlayerType == bPlayerType &&
+            bPlayerType == cPlayerType;
+    }
 
-        bool isDraw = true;
-        foreach (int cell in boardState)
-        {
-            if (cell == 0)
-            {
-                isDraw = false;
+    private void TestWinner() {
+        for (int i=0; i<lineList.Count; i++) {
+            Line line = lineList[i];
+            if (TestWinnerLine(line)) {
+                // Win!
+                Debug.Log("Winner!");
+                currentPlayablePlayerType.Value = PlayerType.None;
+                PlayerType winPlayerType = playerTypeArray[line.centerGridPosition.x, line.centerGridPosition.y];
+                switch (winPlayerType) {
+                    case PlayerType.Cross:
+                        playerCrossScore.Value++;
+                        break;
+                    case PlayerType.Circle:
+                        playerCircleScore.Value++;
+                        break;
+                }
+                TriggerOnGameWinRpc(i, winPlayerType);
                 break;
             }
         }
 
-        if (isDraw)
-        {
-            EndGame("Нічия!");
-            return true;
-        }
-
-        return false;
-    }
-
-    private void EndGame(string message)
-    {
-        isGameEnded = true;
-        UpdateStatus(message + " Натисніть 'R' для рестарту.");
-    }
-
-    void Update()
-    {
-        if (Keyboard.current == null) return; // Запобіжник, якщо пристрій вводу не підключено
-
-        // Рестарт ПІСЛЯ завершення гри (клавіша R)
-        if (isGameEnded && Keyboard.current.rKey.wasPressedThisFrame)
-        {
-            StartNewGame();
-        }
-
-        // Рестарт ПІД ЧАС гри (Shift + R)
-        if (!isGameEnded && !isRestartRequested)
-        {
-            bool isShiftPressed = Keyboard.current.leftShiftKey.isPressed || Keyboard.current.rightShiftKey.isPressed;
-            if (isShiftPressed && Keyboard.current.rKey.wasPressedThisFrame)
-            {
-                isRestartRequested = true;
-                UpdateStatus("Ви запросили рестарт. ШІ погоджується...");
-                Invoke("StartNewGame", 1.5f); // Запускаємо рестарт з невеликою затримкою
-            }
-        }
-
-        // Обробка кліків миші
-        if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame && isPlayerTurn && !isGameEnded && !isRestartRequested)
-        {
-            Ray ray = Camera.main.ScreenPointToRay(Mouse.current.position.ReadValue());
-            RaycastHit hit;
-
-            if (Physics.Raycast(ray, out hit, 100f))
-            {
-                Cell clickedCell = hit.collider.GetComponent<Cell>();
-                if (clickedCell != null)
-                {
-                    PlayerMove(clickedCell.cellIndex);
+        bool hasTie = true;
+        for (int x = 0; x < playerTypeArray.GetLength(0); x++) {
+            for (int y = 0; y < playerTypeArray.GetLength(1); y++) {
+                if (playerTypeArray[x, y] == PlayerType.None) {
+                    hasTie = false;
+                    break;
                 }
             }
         }
+
+        if (hasTie) {
+            TriggerOnGameTiedRpc();
+        }
     }
 
-    private void ClearBoard()
-    {
-        foreach (GameObject marker in spawnedMarkers)
-        {
-            Destroy(marker);
-        }
-        spawnedMarkers.Clear();
+    [Rpc(SendTo.ClientsAndHost)]
+    private void TriggerOnGameTiedRpc() {
+        OnGameTied?.Invoke(this, EventArgs.Empty);
     }
 
-    private void UpdateStatus(string text)
-    {
-        if (statusText != null)
-        {
-            statusText.text = text;
-        }
-        else
-        {
-            Debug.Log(text);
-        }
+    [Rpc(SendTo.ClientsAndHost)]
+    private void TriggerOnGameWinRpc(int lineIndex, PlayerType winPlayerType) {
+        Line line = lineList[lineIndex];
+        OnGameWin?.Invoke(this, new OnGameWinEventArgs {
+            line = line,
+            winPlayerType = winPlayerType,
+        });
     }
+
+    [Rpc(SendTo.Server)]
+    public void RematchRpc() {
+        for (int x = 0; x < playerTypeArray.GetLength(0); x++) {
+            for (int y = 0; y < playerTypeArray.GetLength(1); y++) {
+                playerTypeArray[x, y] = PlayerType.None;
+            }
+        }
+        currentPlayablePlayerType.Value = PlayerType.Cross;
+
+        TriggerOnRematchRpc();
+    }
+
+    [Rpc(SendTo.ClientsAndHost)]
+    private void TriggerOnRematchRpc() {
+        OnRematch?.Invoke(this, EventArgs.Empty);
+    }
+
+    public PlayerType GetLocalPlayerType() {
+        return localPlayerType;
+    }
+
+    public PlayerType GetCurrentPlayablePlayerType() {
+        return currentPlayablePlayerType.Value;
+    }
+
+    public void GetScores(out int playerCrossScore, out int playerCircleScore) {
+        playerCrossScore = this.playerCrossScore.Value;
+        playerCircleScore = this.playerCircleScore.Value;
+    }
+
 }
-
