@@ -1,10 +1,9 @@
-using System.Collections;
-using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class LobbyCreateUI : MonoBehaviour {
+public class LobbyCreateUI : MonoBehaviour
+{
 
 
     public static LobbyCreateUI Instance { get; private set; }
@@ -14,27 +13,29 @@ public class LobbyCreateUI : MonoBehaviour {
     [SerializeField] private Button lobbyNameButton;
     [SerializeField] private Button publicPrivateButton;
     [SerializeField] private Button maxPlayersButton;
-    [SerializeField] private Button gameModeButton;
+    // REMOVED: gameModeButton
     [SerializeField] private TextMeshProUGUI lobbyNameText;
     [SerializeField] private TextMeshProUGUI publicPrivateText;
     [SerializeField] private TextMeshProUGUI maxPlayersText;
-    [SerializeField] private TextMeshProUGUI gameModeText;
+    // REMOVED: gameModeText
 
 
     private string lobbyName;
     private bool isPrivate;
     private int maxPlayers;
-    private LobbyManager.GameMode gameMode;
+    // REMOVED: gameMode
 
-    private void Awake() {
+
+    private void Awake()
+    {
         Instance = this;
 
         createButton.onClick.AddListener(() => {
             LobbyManager.Instance.CreateLobby(
                 lobbyName,
                 maxPlayers,
-                isPrivate,
-                gameMode
+                isPrivate
+            // REMOVED: gameMode
             );
             Hide();
         });
@@ -61,47 +62,40 @@ public class LobbyCreateUI : MonoBehaviour {
                 // Cancel
             },
             (int maxPlayers) => {
+                // FIXED: Corrected the typo from this.this to this
                 this.maxPlayers = maxPlayers;
                 UpdateText();
             });
         });
 
-        gameModeButton.onClick.AddListener(() => {
-            switch (gameMode) {
-                default:
-                case LobbyManager.GameMode.CaptureTheFlag:
-                    gameMode = LobbyManager.GameMode.Conquest;
-                    break;
-                case LobbyManager.GameMode.Conquest:
-                    gameMode = LobbyManager.GameMode.CaptureTheFlag;
-                    break;
-            }
-            UpdateText();
-        });
+        // REMOVED: gameModeButton.onClick listener
 
         Hide();
     }
 
-    private void UpdateText() {
+    private void UpdateText()
+    {
         lobbyNameText.text = lobbyName;
         publicPrivateText.text = isPrivate ? "Private" : "Public";
         maxPlayersText.text = maxPlayers.ToString();
-        gameModeText.text = gameMode.ToString();
+        // REMOVED: gameModeText.text update
     }
 
-    private void Hide() {
+    private void Hide()
+    {
         gameObject.SetActive(false);
     }
 
-    public void Show() {
+    public void Show()
+    {
         gameObject.SetActive(true);
 
         lobbyName = "MyLobby";
         isPrivate = false;
         maxPlayers = 2;
-        gameMode = LobbyManager.GameMode.CaptureTheFlag;
+        // REMOVED: gameMode initialization
 
         UpdateText();
     }
-
 }
+
