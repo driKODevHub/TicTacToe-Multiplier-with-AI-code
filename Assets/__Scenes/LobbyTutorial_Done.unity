@@ -2585,7 +2585,7 @@ GameObject:
   - component: {fileID: 747445329}
   - component: {fileID: 747445328}
   m_Layer: 0
-  m_Name: StartGameManager
+  m_Name: '[StartGameManager]'
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -2827,7 +2827,7 @@ GameObject:
   - component: {fileID: 818158579}
   - component: {fileID: 818158578}
   m_Layer: 0
-  m_Name: LobbyManager
+  m_Name: '[LobbyManager]'
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -7042,9 +7042,9 @@ SceneRoots:
   m_Roots:
   - {fileID: 1766231916}
   - {fileID: 410087041}
+  - {fileID: 747445329}
   - {fileID: 818158579}
   - {fileID: 1144582181}
   - {fileID: 832575519}
   - {fileID: 330585546}
   - {fileID: 245513337}
-  - {fileID: 747445329}
