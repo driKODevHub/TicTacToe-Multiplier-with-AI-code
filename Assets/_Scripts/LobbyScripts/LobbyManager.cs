@@ -20,9 +20,7 @@ public class LobbyManager : MonoBehaviour
 
 
     public const string KEY_PLAYER_NAME = "PlayerName";
-    // REMOVED: KEY_PLAYER_CHARACTER
-    // REMOVED: KEY_GAME_MODE
-    public const string KEY_PLAYER_READY = "PlayerReady"; // NEW: Key for player ready status
+    public const string KEY_PLAYER_READY = "PlayerReady";
     public const string KEY_START_GAME = "StartGame";
     public const string KEY_RELAY_JOIN_CODE = "RelayJoinCode";
 
@@ -33,7 +31,6 @@ public class LobbyManager : MonoBehaviour
     public event EventHandler<LobbyEventArgs> OnJoinedLobby;
     public event EventHandler<LobbyEventArgs> OnJoinedLobbyUpdate;
     public event EventHandler<LobbyEventArgs> OnKickedFromLobby;
-    // REMOVED: OnLobbyGameModeChanged
     public event EventHandler<LobbyEventArgs> OnLobbyStartGame;
     public class LobbyEventArgs : EventArgs
     {
@@ -46,13 +43,11 @@ public class LobbyManager : MonoBehaviour
         public List<Lobby> lobbyList;
     }
 
-    // REMOVED: GameMode Enum
-    // REMOVED: PlayerCharacter Enum
-
 
     private float heartbeatTimer;
     private float lobbyPollTimer;
-    private float refreshLobbyListTimer = 5f;
+    // ВИДАЛЕНО: Невикористовувана змінна
+    // private float refreshLobbyListTimer = 5f;
     private Lobby joinedLobby;
     private string playerName;
     private bool alreadyStartedGame;
@@ -65,7 +60,6 @@ public class LobbyManager : MonoBehaviour
 
     private void Update()
     {
-        //HandleRefreshLobbyList(); // Disabled Auto Refresh for testing with multiple builds
         HandleLobbyHeartbeat();
         HandleLobbyPolling();
     }
@@ -80,28 +74,12 @@ public class LobbyManager : MonoBehaviour
         await UnityServices.InitializeAsync(initializationOptions);
 
         AuthenticationService.Instance.SignedIn += () => {
-            // do nothing
             Debug.Log("Signed in! " + AuthenticationService.Instance.PlayerId);
 
             RefreshLobbyList();
         };
 
         await AuthenticationService.Instance.SignInAnonymouslyAsync();
-    }
-
-    private void HandleRefreshLobbyList()
-    {
-        if (UnityServices.State == ServicesInitializationState.Initialized && AuthenticationService.Instance.IsSignedIn)
-        {
-            refreshLobbyListTimer -= Time.deltaTime;
-            if (refreshLobbyListTimer < 0f)
-            {
-                float refreshLobbyListTimerMax = 5f;
-                refreshLobbyListTimer = refreshLobbyListTimerMax;
-
-                RefreshLobbyList();
-            }
-        }
     }
 
     private async void HandleLobbyHeartbeat()
@@ -127,7 +105,7 @@ public class LobbyManager : MonoBehaviour
             lobbyPollTimer -= Time.deltaTime;
             if (lobbyPollTimer < 0f)
             {
-                float lobbyPollTimerMax = 1.1f;
+                float lobbyPollTimerMax = 3.1f;
                 lobbyPollTimer = lobbyPollTimerMax;
 
                 joinedLobby = await LobbyService.Instance.GetLobbyAsync(joinedLobby.Id);
@@ -142,7 +120,6 @@ public class LobbyManager : MonoBehaviour
                     }
                 }
 
-                // CHANGED: Game starts when all players are ready
                 if (!alreadyStartedGame)
                 {
                     if (IsLobbyHost())
@@ -159,7 +136,6 @@ public class LobbyManager : MonoBehaviour
 
                         if (joinedLobby.Players.Count == 2 && allPlayersReady)
                         {
-                            // Both players are in and ready, start the game
                             StartGame();
                         }
                     }
@@ -168,11 +144,8 @@ public class LobbyManager : MonoBehaviour
 
                 if (!IsPlayerInLobby())
                 {
-                    // Player was kicked out of this lobby
                     Debug.Log("Kicked from Lobby!");
-
                     OnKickedFromLobby?.Invoke(this, new LobbyEventArgs { lobby = joinedLobby });
-
                     joinedLobby = null;
                 }
             }
@@ -197,7 +170,6 @@ public class LobbyManager : MonoBehaviour
             {
                 if (player.Id == AuthenticationService.Instance.PlayerId)
                 {
-                    // This player is in this lobby
                     return true;
                 }
             }
@@ -209,14 +181,12 @@ public class LobbyManager : MonoBehaviour
     {
         return new Player(AuthenticationService.Instance.PlayerId, null, new Dictionary<string, PlayerDataObject> {
             { KEY_PLAYER_NAME, new PlayerDataObject(PlayerDataObject.VisibilityOptions.Public, playerName) },
-            { KEY_PLAYER_READY, new PlayerDataObject(PlayerDataObject.VisibilityOptions.Public, "0") } // NEW: Player is not ready by default
+            { KEY_PLAYER_READY, new PlayerDataObject(PlayerDataObject.VisibilityOptions.Public, "0") }
         });
     }
 
-    // REMOVED: ChangeGameMode()
-
     public async void CreateLobby(string lobbyName, int maxPlayers, bool isPrivate)
-    { // REMOVED: gameMode parameter
+    {
         Player player = GetPlayer();
 
         CreateLobbyOptions options = new CreateLobbyOptions
@@ -224,7 +194,6 @@ public class LobbyManager : MonoBehaviour
             Player = player,
             IsPrivate = isPrivate,
             Data = new Dictionary<string, DataObject> {
-                // REMOVED: KEY_GAME_MODE
                 { KEY_RELAY_JOIN_CODE, new DataObject(DataObject.VisibilityOptions.Member, "") }
             }
         };
@@ -245,7 +214,6 @@ public class LobbyManager : MonoBehaviour
             QueryLobbiesOptions options = new QueryLobbiesOptions();
             options.Count = 25;
 
-            // Filter for open lobbies only
             options.Filters = new List<QueryFilter> {
                 new QueryFilter(
                     field: QueryFilter.FieldOptions.AvailableSlots,
@@ -253,7 +221,6 @@ public class LobbyManager : MonoBehaviour
                     value: "0")
             };
 
-            // Order by newest lobbies first
             options.Order = new List<QueryOrder> {
                 new QueryOrder(
                     asc: false,
@@ -328,7 +295,6 @@ public class LobbyManager : MonoBehaviour
         }
     }
 
-    // NEW: Method to set the player's ready status
     public async void SetPlayerReadyStatus(bool isReady)
     {
         if (joinedLobby != null)
@@ -358,9 +324,6 @@ public class LobbyManager : MonoBehaviour
             }
         }
     }
-
-
-    // REMOVED: UpdatePlayerCharacter()
 
     public async void QuickJoinLobby()
     {
@@ -412,8 +375,6 @@ public class LobbyManager : MonoBehaviour
             }
         }
     }
-
-    // REMOVED: UpdateLobbyGameMode()
 
     public async void StartGame()
     {
@@ -479,3 +440,4 @@ public class LobbyManager : MonoBehaviour
         }
     }
 }
+
